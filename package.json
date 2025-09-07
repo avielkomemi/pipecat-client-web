@@ -1,0 +1,11 @@
+{
+  "name": "root",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix ./pipecat-web-ui/pipecat-web-ui install",
+    "dev": "PORT=${PORT:-3000} NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-wss://localhost:8080/ws} npm --prefix ./pipecat-web-ui/pipecat-web-ui run dev -- --no-turbo -p ${PORT:-3000}",
+    "build": "npm --prefix ./pipecat-web-ui/pipecat-web-ui run build",
+    "start": "npm --prefix ./pipecat-web-ui/pipecat-web-ui run start"
+  },
+  "engines": { "node": ">=18" }
+}
