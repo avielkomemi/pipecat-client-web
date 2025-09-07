@@ -9,7 +9,11 @@ export class WebSocketTransport extends Transport {
   private ws: WebSocket | null = null
   private _localStream: MediaStream | null = null
   private _availableMics: MediaDeviceInfo[] = []
+  private _availableCams: MediaDeviceInfo[] = []
+  private _availableSpeakers: MediaDeviceInfo[] = []
   private _selectedMic: MediaDeviceInfo | Record<string, never> = {}
+  private _selectedCam: MediaDeviceInfo | Record<string, never> = {}
+  private _selectedSpeaker: MediaDeviceInfo | Record<string, never> = {}
 
   initialize(options: PipecatClientOptions, messageHandler: (ev: RTVIMessage) => void): void {
     this._options = options
@@ -27,6 +31,24 @@ export class WebSocketTransport extends Transport {
       })
       
       this._localStream = stream
+      
+      // Get available devices
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      this._availableMics = devices.filter(device => device.kind === 'audioinput')
+      this._availableCams = devices.filter(device => device.kind === 'videoinput')
+      this._availableSpeakers = devices.filter(device => device.kind === 'audiooutput')
+      
+      // Set default selected devices
+      if (this._availableMics.length > 0) {
+        this._selectedMic = this._availableMics[0]
+      }
+      if (this._availableCams.length > 0) {
+        this._selectedCam = this._availableCams[0]
+      }
+      if (this._availableSpeakers.length > 0) {
+        this._selectedSpeaker = this._availableSpeakers[0]
+      }
+      
       this.state = 'initialized'
     } catch (error) {
       console.error('Failed to initialize devices:', error)
@@ -80,8 +102,10 @@ export class WebSocketTransport extends Transport {
       }
 
       this.ws.onclose = () => {
-        this.state = 'disconnected'
-        this._callbacks.onDisconnected?.()
+        if (this.state !== 'disconnecting') {
+          this.state = 'disconnected'
+          this._callbacks.onDisconnected?.()
+        }
       }
 
       this.ws.onerror = (error) => {
@@ -144,19 +168,27 @@ export class WebSocketTransport extends Transport {
   }
 
   async getAllMics(): Promise<MediaDeviceInfo[]> {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    this._availableMics = devices.filter(device => device.kind === 'audioinput')
+    if (this._availableMics.length === 0) {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      this._availableMics = devices.filter(device => device.kind === 'audioinput')
+    }
     return this._availableMics
   }
 
   async getAllCams(): Promise<MediaDeviceInfo[]> {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    return devices.filter(device => device.kind === 'videoinput')
+    if (this._availableCams.length === 0) {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      this._availableCams = devices.filter(device => device.kind === 'videoinput')
+    }
+    return this._availableCams
   }
 
   async getAllSpeakers(): Promise<MediaDeviceInfo[]> {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    return devices.filter(device => device.kind === 'audiooutput')
+    if (this._availableSpeakers.length === 0) {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      this._availableSpeakers = devices.filter(device => device.kind === 'audiooutput')
+    }
+    return this._availableSpeakers
   }
 
   get selectedMic(): MediaDeviceInfo | Record<string, never> {
@@ -164,11 +196,11 @@ export class WebSocketTransport extends Transport {
   }
 
   get selectedCam(): MediaDeviceInfo | Record<string, never> {
-    return {}
+    return this._selectedCam
   }
 
   get selectedSpeaker(): MediaDeviceInfo | Record<string, never> {
-    return {}
+    return this._selectedSpeaker
   }
 
   updateMic(micId: string): void {
@@ -180,11 +212,19 @@ export class WebSocketTransport extends Transport {
   }
 
   updateCam(camId: string): void {
-    // Implementation for camera update
+    const cam = this._availableCams.find(c => c.deviceId === camId)
+    if (cam) {
+      this._selectedCam = cam
+      this._callbacks.onCamUpdated?.(cam)
+    }
   }
 
   updateSpeaker(speakerId: string): void {
-    // Implementation for speaker update
+    const speaker = this._availableSpeakers.find(s => s.deviceId === speakerId)
+    if (speaker) {
+      this._selectedSpeaker = speaker
+      this._callbacks.onSpeakerUpdated?.(speaker)
+    }
   }
 
   enableMic(enable: boolean): void {
@@ -207,6 +247,7 @@ export class WebSocketTransport extends Transport {
 
   enableScreenShare(enable: boolean): void {
     // Implementation for screen share
+    console.log('Screen share not implemented:', enable)
   }
 
   get isMicEnabled(): boolean {
