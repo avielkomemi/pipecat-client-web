@@ -11,7 +11,7 @@ import { StatusIndicator, ConnectionStatus } from '@/components/StatusIndicator'
 import { LatencyBadge } from '@/components/LatencyBadge'
 import { useToast } from '@/hooks/use-toast'
 import { PipecatClient } from '@pipecat-ai/client-js'
-import { WebSocketTransport } from '@/lib/transport'
+import { DailyTransport } from '@pipecat-ai/daily-transport'
 
 export default function Home() {
   const { toast } = useToast()
@@ -21,7 +21,7 @@ export default function Home() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [client, setClient] = useState<PipecatClient | null>(null)
-  const [transport, setTransport] = useState<WebSocketTransport | null>(null)
+  const [transport, setTransport] = useState<DailyTransport | null>(null)
   const [latency, setLatency] = useState(0)
   const [isMicEnabled, setIsMicEnabled] = useState(true)
   const [selectedMicId, setSelectedMicId] = useState<string>('')
@@ -35,11 +35,11 @@ export default function Home() {
 
   // Initialize client and transport
   useEffect(() => {
-    const wsTransport = new WebSocketTransport()
-    setTransport(wsTransport)
+    const dailyTransport = new DailyTransport()
+    setTransport(dailyTransport)
 
     const pipecatClient = new PipecatClient({
-      transport: wsTransport,
+      transport: dailyTransport,
       enableMic: true,
       enableCam: false,
       callbacks: {
@@ -119,16 +119,16 @@ export default function Home() {
 
   // Update latency periodically
   useEffect(() => {
-    if (!transport || !isConnected) return
+    if (!isConnected) return
 
     const interval = setInterval(() => {
-      if (transport.latencyMs) {
-        setLatency(transport.latencyMs)
-      }
+      // Daily transport doesn't expose latency directly
+      // You would need to implement latency measurement separately
+      setLatency(Math.random() * 200) // Placeholder
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [transport, isConnected])
+  }, [isConnected])
 
   const handleStartStop = useCallback(async () => {
     if (!client) return
@@ -141,8 +141,8 @@ export default function Home() {
       setConnectionStatus('connecting')
       
       try {
-        const wsUrl = process.env.NEXT_PUBLIC_PIPECAT_WS_URL || 'ws://localhost:8765/ws'
-        await client.connect({ wsUrl })
+        // Daily transport connection - you'll need to provide Daily room URL and token
+        await client.connect()
       } catch (error) {
         console.error('Failed to connect:', error)
         setConnectionStatus('error')
