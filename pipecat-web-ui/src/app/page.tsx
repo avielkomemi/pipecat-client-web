@@ -1,111 +1,38 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Play, Square, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { MicrophoneSelect } from '@/components/MicrophoneSelect'
-import { TranscriptDisplay, TranscriptEntry } from '@/components/TranscriptDisplay'
-import { SettingsDrawer, SettingsConfig } from '@/components/SettingsDrawer'
-import { StatusIndicator, ConnectionStatus } from '@/components/StatusIndicator'
-import { LatencyBadge } from '@/components/LatencyBadge'
-import { useToast } from '@/hooks/use-toast'
 import { PipecatClient } from '@pipecat-ai/client-js'
-import { DailyTransport } from '@pipecat-ai/daily-transport'
+import { WebSocketTransport } from '@/lib/websocket-transport'
 
 export default function Home() {
-  const { toast } = useToast()
-  
-  // State management
+  const [client, setClient] = useState<PipecatClient | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
-  const [client, setClient] = useState<PipecatClient | null>(null)
-  const [transport, setTransport] = useState<DailyTransport | null>(null)
-  const [latency, setLatency] = useState(0)
-  const [isMicEnabled, setIsMicEnabled] = useState(true)
-  const [selectedMicId, setSelectedMicId] = useState<string>('')
-  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([])
-  const [settings, setSettings] = useState<SettingsConfig>({
-    model: 'gpt-4o-mini',
-    transport: 'websocket',
-    sampleRate: 16000,
-    isRTL: false,
-  })
 
-  // Initialize client and transport
   useEffect(() => {
-    const dailyTransport = new DailyTransport()
-    setTransport(dailyTransport)
-
+    const transport = new WebSocketTransport()
+    
     const pipecatClient = new PipecatClient({
-      transport: dailyTransport,
+      transport,
       enableMic: true,
       enableCam: false,
       callbacks: {
         onConnected: () => {
-          setConnectionStatus('connected')
           setIsConnected(true)
           setIsConnecting(false)
-          toast({
-            title: "Connected",
-            description: "Successfully connected to Pipecat server",
-          })
+          console.log('Connected to Pipecat')
         },
         onDisconnected: () => {
-          setConnectionStatus('disconnected')
           setIsConnected(false)
           setIsConnecting(false)
-          toast({
-            title: "Disconnected",
-            description: "Disconnected from Pipecat server",
-          })
+          console.log('Disconnected from Pipecat')
         },
         onError: (message) => {
-          setConnectionStatus('error')
           setIsConnecting(false)
-          toast({
-            title: "Connection Error",
-            description: message.data?.message || "Failed to connect to server",
-            variant: "destructive",
-          })
+          console.error('Pipecat error:', message)
         },
         onBotReady: () => {
-          toast({
-            title: "Bot Ready",
-            description: "AI assistant is ready to chat",
-          })
-        },
-        onUserTranscript: (data) => {
-          const entry: TranscriptEntry = {
-            id: `user-${Date.now()}`,
-            text: data.text,
-            speaker: 'user',
-            timestamp: new Date(),
-            isFinal: data.final,
-          }
-          
-          setTranscriptEntries(prev => {
-            const filtered = prev.filter(e => e.id !== entry.id || e.isFinal)
-            return [...filtered, entry]
-          })
-        },
-        onBotLlmText: (data) => {
-          const entry: TranscriptEntry = {
-            id: `bot-${Date.now()}`,
-            text: data.text,
-            speaker: 'bot',
-            timestamp: new Date(),
-            isFinal: true,
-          }
-          
-          setTranscriptEntries(prev => [...prev, entry])
-        },
-        onTransportStateChanged: (state) => {
-          console.log('Transport state changed:', state)
-          if (state === 'connecting') {
-            setConnectionStatus('connecting')
-          }
+          console.log('Bot is ready')
         },
       },
     })
@@ -115,143 +42,60 @@ export default function Home() {
     return () => {
       pipecatClient.disconnect()
     }
-  }, [toast])
+  }, [])
 
-  // Update latency periodically
-  useEffect(() => {
-    if (!isConnected) return
-
-    const interval = setInterval(() => {
-      // Daily transport doesn't expose latency directly
-      // You would need to implement latency measurement separately
-      setLatency(Math.random() * 200) // Placeholder
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [isConnected])
-
-  const handleStartStop = useCallback(async () => {
+  const handleConnect = useCallback(async () => {
     if (!client) return
 
-    if (isConnected) {
-      setIsConnecting(true)
-      await client.disconnect()
-    } else {
-      setIsConnecting(true)
-      setConnectionStatus('connecting')
-      
-      try {
-        // Daily transport connection - you'll need to provide Daily room URL and token
-        await client.connect()
-      } catch (error) {
-        console.error('Failed to connect:', error)
-        setConnectionStatus('error')
-        setIsConnecting(false)
-      }
-    }
-  }, [client, isConnected])
-
-  const handleMicrophoneChange = useCallback((deviceId: string) => {
-    setSelectedMicId(deviceId)
-    if (client) {
-      client.updateMic(deviceId)
+    setIsConnecting(true)
+    
+    try {
+      await client.connect({
+        wsUrl: process.env.NEXT_PUBLIC_PIPECAT_WS_URL || 'ws://localhost:8765/ws'
+      })
+    } catch (error) {
+      console.error('Failed to connect:', error)
+      setIsConnecting(false)
     }
   }, [client])
 
-  const handleMicrophoneToggle = useCallback((enabled: boolean) => {
-    setIsMicEnabled(enabled)
-    if (client) {
-      client.enableMic(enabled)
-    }
+  const handleDisconnect = useCallback(async () => {
+    if (!client) return
+    await client.disconnect()
   }, [client])
-
-  const handleSettingsChange = useCallback((newSettings: SettingsConfig) => {
-    setSettings(newSettings)
-    // Here you would typically send the new settings to the server
-    toast({
-      title: "Settings Updated",
-      description: "Your preferences have been saved",
-    })
-  }, [toast])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900">Pipecat Web UI</h1>
-          <p className="text-gray-600">Production-ready voice AI interface</p>
-        </div>
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+        <h1 className="text-2xl font-bold text-center mb-6">Pipecat Web UI</h1>
+        
+        <div className="space-y-4">
+          <div className="text-center">
+            <div className={`inline-block w-3 h-3 rounded-full mr-2 ${
+              isConnected ? 'bg-green-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-sm">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
 
-        {/* Main Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Voice Assistant</span>
-              <div className="flex items-center gap-4">
-                {isConnected && <LatencyBadge latency={latency} />}
-                <StatusIndicator status={connectionStatus} />
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Control Row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Button
-                  onClick={handleStartStop}
-                  disabled={isConnecting}
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  {isConnecting ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : isConnected ? (
-                    <Square className="h-5 w-5" />
-                  ) : (
-                    <Play className="h-5 w-5" />
-                  )}
-                  {isConnecting ? 'Connecting...' : isConnected ? 'Stop' : 'Start'}
-                </Button>
-
-                {isConnected && (
-                  <MicrophoneSelect
-                    onMicrophoneChange={handleMicrophoneChange}
-                    onMicrophoneToggle={handleMicrophoneToggle}
-                    isMicEnabled={isMicEnabled}
-                    selectedMicId={selectedMicId}
-                  />
-                )}
-              </div>
-
-              <SettingsDrawer
-                settings={settings}
-                onSettingsChange={handleSettingsChange}
-              />
-            </div>
-
-            {/* Transcript */}
-            <TranscriptDisplay
-              entries={transcriptEntries}
-              isRTL={settings.isRTL}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <div className="text-center text-sm text-gray-500">
-          <p>
-            Built with{' '}
-            <a
-              href="https://pipecat.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
+          <div className="flex gap-2">
+            <button
+              onClick={handleConnect}
+              disabled={isConnecting || isConnected}
+              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded"
             >
-              Pipecat
-            </a>
-            {' '}• WebSocket: {process.env.NEXT_PUBLIC_PIPECAT_WS_URL || 'ws://localhost:8765/ws'}
-          </p>
+              {isConnecting ? 'Connecting...' : 'Connect'}
+            </button>
+            
+            <button
+              onClick={handleDisconnect}
+              disabled={!isConnected}
+              className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-gray-400 text-white px-4 py-2 rounded"
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
       </div>
     </div>
