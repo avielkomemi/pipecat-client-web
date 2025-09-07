@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { WebSocketTransport } from '@pipecat-ai/websocket-transport'
 
 export default function Home() {
   return (
